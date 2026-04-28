@@ -5,11 +5,11 @@
 
 | **ID**  | **titre**                                       | **Description**                                                                                              | **Sprint** |
 | ------- | ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------ | ---------- |
-| CG_01   | (dé)pointage de l'équipe                        | valider,ou non la présence des employés de son groupe                                                        | 7          |X
-| CG_02   | Consulter la liste de ses employés              | Visualiser les employés polyvalents rattachés à son groupe (fiche, poste, statut, présence, ...)             | 7          |X
-| CG_03   | Assigner des tâches aux employés de son groupe  | Répartir les tâches du jour (de la semaine) à chacun des employés de son groupe                              | 7          |X
-| CG_04   | Modifier une tâche assignée                     | Modifier les paramètres d'une tâche assignée (employé, date, localisation) tant qu'elle n'est pas commencée  | 7          |X
-| CG_05   | Annuler une tâche assignée                      | Annuler une tâche assignée tant qu'elle n'est pas commencée                                                  | 7          |X
+| CG_01   | (dé)pointage de l'équipe                        | valider,ou non la présence des employés de son groupe                                                        | 7          |
+| CG_02   | Consulter la liste de ses employés              | Visualiser les employés polyvalents rattachés à son groupe (fiche, poste, statut, présence, ...)             | 7          |
+| CG_03   | Assigner des tâches aux employés de son groupe  | Répartir les tâches du jour (de la semaine) à chacun des employés de son groupe                              | 7          |
+| CG_04   | Modifier une tâche assignée                     | Modifier les paramètres d'une tâche assignée (employé, date, localisation) tant qu'elle n'est pas commencée  | 7          |
+| CG_05   | Annuler une tâche assignée                      | Annuler une tâche assignée tant qu'elle n'est pas commencée                                                  | 7          |
 | CG_06   | Consulter l'avancement des tâches du groupe     | Visualiser en temps réel l'état des tâches assignées (à faire, en cours, terminées, en retard)               | 7          |
 | CG_07   | Proposer un planning de groupe                  | Soumettre un planning hebdomadaire ou journalier pour validation par le chef d'équipe                        | 7          |
 | CG_08   | Modifier un planning proposé                    | Modifier un planning soumis tant qu'il n'est pas validé par le chef d'équipe                                 | 7          |
