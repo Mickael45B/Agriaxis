@@ -1,0 +1,149 @@
+@startuml AD_06_Ecommerce_Particulier
+title AgriAxis — AD06 : Cycle complet e-commerce client particulier
+
+skinparam backgroundColor #FAFAFA
+skinparam ActivityBackgroundColor #FEFDE7
+skinparam ActivityBorderColor #F39C12
+skinparam ActivityFontColor #7D6608
+skinparam ActivityFontSize 12
+skinparam ArrowColor #E67E22
+skinparam PartitionBackgroundColor #FFFDF0
+skinparam PartitionBorderColor #F39C12
+skinparam DiamondBackgroundColor #FEF9CD
+skinparam DiamondBorderColor #7D6608
+skinparam NoteBackgroundColor #FFFCE0
+skinparam NoteBorderColor #CCCCAA
+
+|#FEF9CD|Client Particulier|
+start
+
+if (Compte existant ?) then (non)
+  :S'inscrit (email + MDP\nou OAuth Google/Facebook)\navec consentement RGPD;
+  note right: CP_01
+else (oui)
+  :Se connecte;
+  note right: CP_02
+end if
+
+:Parcourt le catalogue\n(filtres : taille, exposition,\n arrosage, prix, catégorie);
+note right: CP_10
+
+:Consulte une fiche produit\n(photos, conseils, avis, dispo);
+note right: CP_12
+
+if (Disponible en stock ?) then (non)
+  :Ajoute à la liste\nde souhaits;
+  note right: CP_14
+  :Active l'alerte\nde réapprovisionnement;
+  stop
+else (oui)
+  :Ajoute au panier;
+  note right: CP_16
+end if
+
+if (Code promo ?) then (oui)
+  :Saisit le code promo;
+  note right: CP_18
+
+  |#FDF0D0|Système|
+  if (Code valide et\nnon expiré ?) then (non)
+    :Affiche message d'erreur;
+    |#FEF9CD|Client Particulier|
+  else (oui)
+    :Applique la remise;
+  end if
+end if
+
+if (Points fidélité\ndisponibles ?) then (oui)
+  :Utilise ses points\n(réduction sur commande);
+  note right: CP_37
+end if
+
+:Choisit le mode de livraison;
+note right: CP_19
+
+if (Mode livraison ?) then (click & collect)
+  :Sélectionne le site\net le créneau horaire;
+else if (point relais) then
+  :Sélectionne le point relais;
+else (domicile)
+  :Saisit / confirme\nl'adresse de livraison;
+  note right: CP_05
+end if
+
+:Passe la commande;
+note right: CP_20
+
+|#FDF0D0|Système|
+:Vérifie disponibilité\nstock en temps réel;
+
+if (Stock toujours\ndisponible ?) then (non)
+  :Informe le client\nde la rupture;
+  |#FEF9CD|Client Particulier|
+  :Ajuste le panier;
+else (oui)
+  :Réserve le stock;
+  :Crée la commande\n(statut : EN_ATTENTE_PAIEMENT);
+end if
+
+|#FEF9CD|Client Particulier|
+:Procède au paiement\n(CB 3DS / PayPal / virement);
+note right: CP_21
+
+|#FDF0D0|Système (Webhook Stripe)|
+:Reçoit la confirmation\nde paiement (webhook);
+
+if (Paiement confirmé ?) then (non)
+  :Annule la réservation stock;
+  :Notifie le client\n(échec paiement);
+  stop
+else (oui)
+  :Confirme la commande;
+  :Libère le stock\n(mouvement SORTIE);
+  :Crédite les points fidélité\n(1 pt / 1€);
+  note right: CP_38
+
+  :Envoie l'email de confirmation\n(facture PDF jointe);
+  note right: CP_22
+
+  |#FEF9CD|Client Particulier|
+  :Reçoit la confirmation\n+ numéro de commande;
+  :Suit l'avancement\nde sa commande;
+  note right: CP_24
+
+  if (Mode click & collect ?) then (oui)
+
+    |#FDF0D0|Système|
+    :Notifie quand la commande\nest prête à retirer;
+
+    |#FEF9CD|Client Particulier|
+    :Retire sa commande\nau site;
+
+  else (livraison)
+
+    |#FDF0D0|Système|
+    :Transmet au transporteur\n(mission créée Sprint 17);
+
+    |#FEF9CD|Client Particulier|
+    :Suit la livraison\n(lien transporteur);
+    note right: CP_26
+    :Reçoit sa commande;
+
+  end if
+
+  :Laisse un avis produit\n(après réception);
+  note right: CP_33
+
+  if (Souhaite parrainer\nun ami ?) then (oui)
+    :Génère un lien\nde parrainage;
+    note right: CP_39
+  end if
+
+  stop
+end if
+
+@enduml
+
+
+
+

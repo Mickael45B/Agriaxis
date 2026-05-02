@@ -1,0 +1,93 @@
+@startuml AD_08_Cycle_Paie
+title AgriAxis — AD08 : Cycle de paie mensuel
+
+skinparam backgroundColor #FAFAFA
+skinparam ActivityBackgroundColor #F4ECF7
+skinparam ActivityBorderColor #8E44AD
+skinparam ActivityFontColor #4A235A
+skinparam ActivityFontSize 12
+skinparam ArrowColor #8E44AD
+skinparam PartitionBackgroundColor #FAF5FF
+skinparam PartitionBorderColor #8E44AD
+skinparam DiamondBackgroundColor #E8D5F5
+skinparam DiamondBorderColor #4A235A
+skinparam NoteBackgroundColor #FFFCE0
+skinparam NoteBorderColor #CCCCAA
+
+|#E8D5F5|RH|
+start
+:Collecte les éléments\nvariables du mois :\n- Heures supplémentaires\n- Absences maladie\n- Accidents du travail\n- Primes / acomptes;
+note right: RH_33
+
+:Vérifie la cohérence\navec les pointages\net feuilles d'activité validées;
+
+fork
+  :Consulte les pointages\ndu mois (tous sites);
+fork again
+  :Consulte les absences\nenregistrées;
+fork again
+  :Consulte les feuilles\nd'activité validées\npar les chefs de groupe;
+end fork
+
+:Saisit les éléments\nvariables dans l'ERP;
+note right: RH_33
+
+if (Anomalie détectée ?) then (oui)
+  :Corrige l'anomalie\n(pointage, absence, prime);
+  :Documente la correction\n(motif obligatoire);
+end if
+
+:Valide les éléments\nvariables de paie;
+note right: RH_34
+
+|#D5B8E8|Dirigeant|
+:Approuve les éléments\nvariables si montant\nabove seuil;
+note right: DI_13 (si requis)
+
+|#E8D5F5|RH|
+:Exporte les données\nde paie pour le prestataire\nextérieur (COM_29);
+note right: CSV / intégration API paie
+
+|#D5B8E8|Prestataire externe (hors système)|
+:Génère les bulletins\nde paie;
+:Retourne les bulletins\nau format PDF;
+
+|#E8D5F5|RH|
+:Importe les bulletins\ndans l'ERP (RH_35);
+note right: RH_35
+
+:Distribue les bulletins\ndans les dossiers employés\n(chaque employé y accède\nsur son espace personnel);
+
+|#C29BD5|Comptable|
+:Reçoit l'export\ndes données de paie;
+note right: COM_29 — données agrégées
+
+:Saisit l'écriture\nde masse salariale\n(641 / 431 / 437 / 421);
+note right: brut / charges sociales\npatronales / salariales / net à payer
+
+:Saisit les virements\nbancaires (paiements salaires);
+
+:Enregistre les\ndéclarations sociales\n(DSN mensuelle);
+note right: flux externe URSSAF
+
+if (Vérification\nécriture équilibrée ?) then (non)
+  :Corrige l'écriture;
+else (oui)
+  :Valide l'écriture\nde paie;
+end if
+
+:Met à jour le\nsuivi de trésorerie;
+
+|#E8D5F5|RH|
+:Consulte la masse\nsalariale du mois;
+note right: RH_36
+
+if (Écart significatif\nvs mois précédent ?) then (oui)
+  :Analyse l'écart\n(départs, entrées, primes);
+  :Génère le rapport\nRH mensuel;
+  note right: RH_45
+end if
+
+stop
+
+@enduml

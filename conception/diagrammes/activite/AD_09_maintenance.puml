@@ -1,0 +1,136 @@
+@startuml AD_09_Maintenance_OT
+title AgriAxis — AD09 : Cycle de vie d'un ordre de travail maintenance
+
+skinparam backgroundColor #FAFAFA
+skinparam ActivityBackgroundColor #FDEDEC
+skinparam ActivityBorderColor #C0392B
+skinparam ActivityFontColor #7B1515
+skinparam ActivityFontSize 12
+skinparam ArrowColor #C0392B
+skinparam PartitionBackgroundColor #FEF9F9
+skinparam PartitionBorderColor #C0392B
+skinparam DiamondBackgroundColor #FADBD8
+skinparam DiamondBorderColor #7B1515
+skinparam NoteBackgroundColor #FFFCE0
+skinparam NoteBorderColor #CCCCAA
+
+|#FADBD8|Déclencheur (Employé / Système)|
+start
+
+if (Origine de l'OT ?) then (signalement terrain)
+  :Employé déclare un\nproblème technique\n(description, localisation);
+  note right: EP_21
+  :Signalement visible\npar le mécanicien\net le chef de site;
+  note right: ME_14
+
+else if (maintenance préventive) then
+  |#F5B7B1|Système (automatique)|
+  :Détecte l'échéance\npréventive\n(intervalle jours/km/heures\natteint ou dépassé);
+  note right: prochaineMaintenancePrevue.estEnAlerte
+
+else (panne signalée par mécanicien) then
+  |#E87070|Mécanicien|
+  :Signale un équipement\ndangereux ou en panne;
+  note right: ME_19
+
+end if
+
+|#F8A090|Chef de Site|
+:Crée l'ordre de travail\n(machine, type, priorité, échéance);
+:Assigne au mécanicien;
+note right: CSI_23
+
+|#E87070|Mécanicien|
+:Reçoit la notification\nde nouvel OT;
+:Consulte l'OT\n(machine, type, documents);
+note right: ME_01
+
+if (Prise en charge\npossible ?) then (non)
+  :Refuse l'OT\n(motif obligatoire);
+  note right: ME_02
+
+  |#F8A090|Chef de Site|
+  :Réassigne à un autre\nmécanicien ou prestataire;
+
+else (oui)
+  |#E87070|Mécanicien|
+  :Accepte l'OT;
+  note right: ME_02
+
+  :Consulte l'historique\nd'interventions\nde la machine;
+  note right: ME_10
+
+  :Consulte le stock\nde pièces détachées;
+  note right: ME_18
+
+  if (Pièces disponibles\nen stock ?) then (non)
+    :Soumet une demande\nde pièces\n(référence, quantité, urgence);
+    note right: ME_16
+
+    |#D06060|Gestionnaire de Stock|
+    :Traite la demande\nde pièces;
+    note right: GS_26
+
+    if (Pièces en stock\n(autre site) ?) then (oui)
+      :Transfère les pièces;
+    else (non)
+      :Commande au fournisseur;
+
+      |#E87070|Mécanicien|
+      :Attend la réception\ndes pièces (OT : SUSPENDU);
+      note right: ME_05
+    end if
+  end if
+
+  :Démarre l'intervention\n(horodatage automatique);
+  note right: ME_03
+
+  if (Incident pendant\nl'intervention ?) then (oui)
+    :Suspend l'intervention\n(attente pièces, prestataire...);
+    note right: ME_05
+
+    if (Intervention extérieure\nnécessaire ?) then (oui)
+      :Soumet une demande\nde prestataire externe;
+      note right: ME_20
+
+      |#F8A090|Chef de Site|
+      :Valide et contacte\nle prestataire;
+
+      |#E87070|Mécanicien|
+      :Reprend après intervention\nextérieure;
+      note right: ME_06
+    else (non)
+      :Reprend l'intervention;
+      note right: ME_06
+    end if
+  end if
+
+  :Clôture l'intervention\n(travaux réalisés, pièces utilisées);
+  note right: ME_04
+
+  :Rédige le compte-rendu\n(durée, pièces, observations);
+  note right: ME_21
+
+  |#F8A090|Chef de Site|
+  :Valide le compte-rendu;
+
+  |#E87070|Mécanicien|
+  :Met à jour le compteur\nde la machine (km/heures);
+  note right: ME_04
+
+  |#D06060|Système|
+  :Recalcule la prochaine\nmaintenance préventive;
+  note right: prochaineMaintenancePrevue
+
+  :Génère l'écriture\ncomptable (coût maintenance);
+  note right: pièces + main-d'oeuvre
+
+  if (Intervention améliorante ?) then (oui)
+    :Crée / met à jour\nl'immobilisation\n(si augmentation de valeur);
+    note right: estAmeliorante = true
+  end if
+
+  stop
+end if
+
+@enduml

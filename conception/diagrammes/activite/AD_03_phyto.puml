@@ -1,0 +1,128 @@
+@startuml AD_03_Prescription_Phyto_Cycle
+title AgriAxis — AD03 : Cycle de vie d'une prescription phytosanitaire
+
+skinparam backgroundColor #FAFAFA
+skinparam ActivityBackgroundColor #E9F7EF
+skinparam ActivityBorderColor #1A9641
+skinparam ActivityFontColor #1A4731
+skinparam ActivityFontSize 12
+skinparam ArrowColor #1A9641
+skinparam PartitionBackgroundColor #F4FBF6
+skinparam PartitionBorderColor #1A9641
+skinparam DiamondBackgroundColor #D5F0E0
+skinparam DiamondBorderColor #1A4731
+skinparam NoteBackgroundColor #FFFCE0
+skinparam NoteBorderColor #CCCCAA
+
+|#D5F0E0|Chef de Culture|
+start
+
+fork
+  :Observation terrain\n(CC ou EPH);
+  :Signalement maladie/ravageur\nreçu;
+  note right: CC_16 / EPH_16
+fork again
+  :Planification préventive\n(protocole de routine);
+  note right: CC_11
+end fork
+
+:Évalue le problème\n(diagnostic);
+note right: CC_17
+
+if (Traitement préventif\n(protocole existant) ?) then (oui)
+
+  |#B8E6C8|Employé Phyto|
+  :Consulte le protocole\npréventif applicable;
+  note right: EPH_11
+  :Déclare l'exécution\ndu traitement préventif\n(dose, surface, conditions, EPI);
+  note right: EPH_12
+
+  |#D5F0E0|Chef de Culture|
+  :Valide le traitement;
+  note right: CC_22
+
+else (non — prescription ponctuelle)
+
+  |#D5F0E0|Chef de Culture|
+  :Vérifie AMM du produit\n(non expiré, autorisé);
+
+  if (AMM valide ?) then (non)
+    :Choisit un produit\nalternatif autorisé;
+  end if
+
+  :Vérifie Certiphyto\nde l'opérateur assigné;
+
+  if (Certiphyto valide ?) then (non)
+    :Alerte RH + réassigne\nà un autre opérateur;
+    note right: ALERTE AUTOMATIQUE
+  end if
+
+  :Crée la prescription\n(produit, dose, zone, lots, DAR, échéance);
+  note right: CC_18
+
+  |#B8E6C8|Employé Phyto|
+  :Reçoit la notification\nde nouvelle prescription;
+
+  if (Exécution possible ?) then (non)
+    :Refuse la prescription\n(motif : produit indisponible,\n météo, EPI manquant);
+    note right: EPH_03
+
+    |#D5F0E0|Chef de Culture|
+    :Reçoit le refus;
+    :Réassigne ou replanifie;
+    stop
+
+  else (oui)
+    :Accepte la prescription;
+    note right: EPH_02
+
+    :Vérifie les EPI requis\npar la fiche réglementaire;
+    note right: EPH_23
+
+    :Démarre le traitement\n(horodatage, conditions météo,\n EPI portés);
+    note right: EPH_04
+
+    if (Incident pendant\nle traitement ?) then (oui)
+      :Suspend le traitement\n(motif obligatoire);
+      note right: EPH_06
+      :Déclare l'incident\nde manipulation si nécessaire;
+      note right: EPH_20
+
+      if (Reprise possible ?) then (oui)
+        :Reprend le traitement;
+        note right: EPH_07
+      else (non)
+        :Signale l'impossibilité\nau chef de culture;
+        stop
+      end if
+    end if
+
+    :Clôture le traitement\n(dose réelle, surface, observations);
+    note right: EPH_05
+
+    |#8ED4A8|Système (automatique)|
+    :Alimente le registre\nphytosanitaire\n(pour chaque lot traité);
+    note right: AUTOMATISME RÉGLEMENTAIRE
+    :Calcule la dateFinDAR\n(dateTraitement + DAR jours);
+
+    |#D5F0E0|Chef de Culture|
+    :Valide le traitement\nexécuté;
+    note right: CC_22
+
+    |#8ED4A8|Système (automatique)|
+    :Marque le registre\ncomme validé;
+  end if
+end if
+
+:Registre phytosanitaire\nmis à jour ✅;
+note right: Consultable CA, CC, EPH
+
+if (Alerte multi-sites\nnécessaire ?) then (oui)
+  |#D5F0E0|Chef de Culture|
+  :Émet une alerte phyto\nmulti-sites;
+  note right: CC_23
+end if
+
+stop
+
+@enduml

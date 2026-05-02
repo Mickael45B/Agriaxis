@@ -1,0 +1,102 @@
+@startuml AD_01_Recrutement
+title AgriAxis — AD01 : Processus de recrutement (de la création de l'offre à l'embauche)
+
+skinparam backgroundColor #FAFAFA
+skinparam ActivityBackgroundColor #EBF5FB
+skinparam ActivityBorderColor #2E75B6
+skinparam ActivityFontColor #1F3864
+skinparam ActivityFontSize 12
+skinparam ArrowColor #2E75B6
+skinparam PartitionBackgroundColor #2c5f92
+skinparam PartitionBorderColor #2E75B6
+skinparam DiamondBackgroundColor #D6E4F0
+skinparam DiamondBorderColor #1F3864
+skinparam NoteBackgroundColor #FFFCE0
+skinparam NoteBorderColor #CCCCAA
+
+|#D6EAF8|Chef de Site|
+start
+:Identifie un besoin en recrutement;
+:Soumet la demande de recrutement\n(poste, site, type contrat, profil);
+note right: CSI_19
+
+|#E8F8E8|RH|
+:Reçoit la demande;
+:Crée l'offre d'emploi\n(titre, description, salaire, date);
+note right: RH_01
+
+:Publie l'offre;
+
+|#FEFDE7|Candidat (externe)|
+:Soumet sa candidature\n(CV + lettre de motivation);
+
+|#E8F8E8|RH|
+:Reçoit la candidature;
+:Qualifie la candidature;
+note right: RH_05
+
+if (Candidature présélectionnée ?) then (oui)
+  :Planifie un entretien\n(date, lieu, interlocuteurs);
+  note right: RH_06
+
+  |#D6EAF8|Chef de Site|
+  :Participe à l'entretien;
+  :Donne un avis consultatif;
+  note right: CSI_21
+
+  |#E8F8E8|RH|
+  :Saisit le compte-rendu\nd'entretien (évaluation, décision);
+  note right: RH_07
+
+  if (Candidat retenu ?) then (oui)
+
+    |#FEF9E7|Dirigeant|
+    :Valide le recrutement;
+    note right: DI_13
+
+    |#E8F8E8|RH|
+    :Crée le dossier employé\n(identité, poste, site, contrat);
+    note right: RH_10
+
+    :Prépare le contrat de travail\n(type, salaire, clauses);
+    note right: RH_17
+
+    :Transmet le contrat\nà la direction pour signature;
+    note right: RH_19
+
+    |#FEF9E7|Dirigeant|
+    :Valide et signe le contrat;
+    note right: DI_16
+
+    |#E8F8E8|RH|
+    :Enregistre la signature\n(document signé joint);
+    note right: RH_20
+
+    :Crée le compte utilisateur\n(transmet à Employé Info);
+
+    |#F4ECF7|Employé Informatique|
+    :Crée le compte utilisateur\n(rôle RBAC assigné);
+    note right: EI_09
+
+    |#FEFDE7|Candidat (externe)|
+    :Reçoit ses identifiants\npar email sécurisé;
+    stop
+
+  else (non)
+    |#E8F8E8|RH|
+    :Archive la candidature\n(statut : REFUSÉ);
+    :Notifie le candidat\n(email automatique);
+    stop
+  end if
+
+else (non)
+  |#E8F8E8|RH|
+  :Archive la candidature\n(statut : NON_PRÉSÉLECTIONNÉ);
+  stop
+end if
+
+@enduml
+
+
+
+

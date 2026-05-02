@@ -1,0 +1,111 @@
+@startuml AD_07_Retour_Client
+title AgriAxis — AD07 : Traitement d'un retour client (e-commerce + magasin)
+
+skinparam backgroundColor #FAFAFA
+skinparam ActivityBackgroundColor #FADBD8
+skinparam ActivityBorderColor #C0392B
+skinparam ActivityFontColor #7B1515
+skinparam ActivityFontSize 12
+skinparam ArrowColor #C0392B
+skinparam PartitionBackgroundColor #FEF9F9
+skinparam PartitionBorderColor #C0392B
+skinparam DiamondBackgroundColor #FADBD8
+skinparam DiamondBorderColor #7B1515
+skinparam NoteBackgroundColor #FFFCE0
+skinparam NoteBorderColor #CCCCAA
+
+|#FADBD8|Client|
+start
+
+if (Canal de retour ?) then (e-commerce)
+  :Initie le retour en ligne\n(motif, article, quantité, photos);
+  note right: CP_29
+
+  |#F5B7B1|SAV / Système|
+  :Reçoit la demande de retour;
+  :Valide la conformité\nde la demande\n(délai légal, article éligible);
+
+  if (Délai légal respecté ?\n(14j rétractation ou\n défaut de conformité)) then (non)
+    :Refuse le retour\n(motif : hors délai);
+    |#FADBD8|Client|
+    :Reçoit la notification\nde refus;
+    stop
+  else (oui)
+    :Valide la demande\n(envoie bon de retour);
+  end if
+
+else (magasin physique)
+  :Présente l'article\net le ticket de caisse;
+  note right: VE_15
+
+  |#F5B7B1|Vendeur|
+  :Enregistre le retour\n(ticket, article, motif);
+
+end if
+
+|#F5B7B1|Contrôleur Qualité / Vendeur|
+:Contrôle l'état\nde l'article retourné;
+note right: CQ_21 / VE_16
+
+if (État de l'article ?) then (bon état)
+
+  fork
+    :Remet en stock\n(mouvement ENTRÉE_RETOUR);
+    note right: Qualité vérifiée avant remise
+  fork again
+    if (Décision remboursement ?) then (remboursement)
+      :Rembourse le client\n(CB / virement);
+
+      |#E8B4B8|Comptable (Système)|
+      :Génère l'écriture comptable\n(note de crédit / avoir);
+    else (avoir)
+      :Émet un avoir client\n(bon d'achat);
+      note right: VE_18
+
+      |#FADBD8|Client|
+      :Reçoit son avoir\n(utilisable sur prochain achat);
+    else (échange)
+      :Propose un échange\n(article disponible);
+    end if
+  end fork
+
+  stop
+
+else if (article endommagé) then
+
+  |#F5B7B1|Contrôleur Qualité|
+  :Qualifie le retour\nnon conforme;
+  note right: CQ_23 / VE_17
+
+  if (Responsabilité ?) then (fournisseur)
+    :Crée une NC fournisseur\navec photos;
+    note right: déclenche processus retour fournisseur
+  else if (client) then
+    :Refuse le remboursement\n(dommages causés par client);
+
+    |#FADBD8|Client|
+    :Reçoit la notification\nde refus motivée;
+    stop
+
+  else (transport) then
+    :Ouvre un litige\navec le transporteur;
+    :Rembourse le client\nen attendant le litige;
+  end if
+
+  |#E8B4B8|Comptable (Système)|
+  :Enregistre les\nécritures correspondantes;
+
+  stop
+
+else (hors délai / non éligible) then
+
+  |#F5B7B1|SAV|
+  :Refuse le retour\n(motif documenté);
+
+  |#FADBD8|Client|
+  :Reçoit la notification;
+  stop
+
+end if
+
+@enduml

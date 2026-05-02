@@ -1,0 +1,115 @@
+@startuml AD_10_Procedure_Disciplinaire
+title AgriAxis — AD10 : Procédure disciplinaire (de la constatation à la sanction)
+
+skinparam backgroundColor #FAFAFA
+skinparam ActivityBackgroundColor #EBF5FB
+skinparam ActivityBorderColor #2E75B6
+skinparam ActivityFontColor #1F3864
+skinparam ActivityFontSize 12
+skinparam ArrowColor #2E75B6
+skinparam PartitionBackgroundColor #F8FBFE
+skinparam PartitionBorderColor #2E75B6
+skinparam DiamondBackgroundColor #D6E4F0
+skinparam DiamondBorderColor #1F3864
+skinparam NoteBackgroundColor #FFFCE0
+skinparam NoteBorderColor #CCCCAA
+
+|#D6EAF8|Chef de Site / Manager|
+start
+:Constate un manquement\n(faute disciplinaire,\n comportement, absence injustifiée);
+:Documente les faits\n(date, description, témoins);
+
+|#B8D4EE|RH|
+:Reçoit le signalement;
+:Évalue la gravité\ndu manquement;
+
+if (Gravité ?) then (mineure — avertissement)
+
+  :Prépare la lettre\nd'avertissement;
+
+  |#9AC4E6|Dirigeant|
+  if (Avertissement\nvalidé ?) then (oui)
+    :Valide l'avertissement;
+    note right: DI_19
+  else (non)
+    stop
+  end if
+
+  |#B8D4EE|RH|
+  :Ouvre la procédure\ndisciplinaire;
+  note right: RH_41
+  :Enregistre l'avertissement\n(document joint);
+  note right: RH_42
+
+  |#7CB4DE|Employé Syndical|
+  :Est informé si\nl'employé le sollicite;
+  note right: ES_20
+
+  |#D6EAF8|Employé concerné|
+  :Reçoit la lettre\nd'avertissement;
+  :Peut contester\ndans les délais légaux;
+
+  stop
+
+else if (grave — mise à pied / licenciement) then
+
+  |#B8D4EE|RH|
+  :Convoque l'employé\nà un entretien préalable\n(lettre RAR obligatoire);
+
+  |#7CB4DE|Employé Syndical|
+  :Accompagne l'employé\ns'il le demande;
+  note right: ES_21
+
+  |#D6EAF8|Employé concerné|
+  :Se présente\nà l'entretien préalable;
+
+  |#B8D4EE|RH|
+  :Mène l'entretien\n(expose les faits,\n écoute l'employé);
+
+  :Respecte le délai\nde réflexion légal\n(min. 1 jour ouvrable);
+
+  if (Décision après\nentretien ?) then (classement sans suite)
+    :Archive le dossier\n(aucune sanction);
+    stop
+
+  else if (mise à pied conservatoire) then
+    :Notifie la mise à pied\n(avec date de reprise);
+
+    |#9AC4E6|Dirigeant|
+    :Valide la décision;
+    note right: DI_19
+
+    |#B8D4EE|RH|
+    :Enregistre la sanction\n(document + date effet);
+    note right: RH_42
+
+    |#7CB4DE|Employé Syndical|
+    :Peut contester\ndevant la direction;
+    note right: ES_22 — dossier de défense
+
+    stop
+
+  else (licenciement) 
+    |#9AC4E6|Dirigeant|
+    :Valide le licenciement;
+    note right: DI_19
+
+    |#B8D4EE|RH|
+    :Envoie la lettre\nde licenciement (RAR)\navec motif précis;
+
+    :Calcule les indemnités\n(si applicables);
+
+    :Prépare le solde\nde tout compte\n+ certificat de travail\n+ attestation Pôle Emploi;
+
+    :Archive le dossier\nemployé (5 ans minimum);
+    note right: RH_12
+
+    |#D6EAF8|Système|
+    :Désactive le compte\nutilisateur (EI_13);
+    :Révoque les accès RBAC;
+
+    stop
+  end if
+end if
+
+@enduml

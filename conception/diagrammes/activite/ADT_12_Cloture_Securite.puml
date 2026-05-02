@@ -1,0 +1,299 @@
+@startuml ADT_04_Cloture_Comptable_Technique
+title AgriAxis — ADT04 : Clôture comptable annuelle (vérifications système, gardes, verrouillage)
+
+skinparam backgroundColor #1E1E1E
+skinparam ActivityBackgroundColor #1A1A3A
+skinparam ActivityBorderColor #9F7AEA
+skinparam ActivityFontColor #E2E8F0
+skinparam ActivityFontSize 11
+skinparam ArrowColor #B794F4
+skinparam PartitionBackgroundColor #12123A
+skinparam PartitionBorderColor #553C9A
+skinparam PartitionFontColor #CBD5E0
+skinparam DiamondBackgroundColor #2D1B69
+skinparam DiamondBorderColor #B794F4
+skinparam DiamondFontColor #E9D8FD
+skinparam NoteBackgroundColor #1A3A1A
+skinparam NoteBorderColor #68D391
+skinparam NoteFontColor #C6F6D5
+
+|#12123A|ComptaService|
+start
+:Reçoit la demande\npreparerCloture(exerciceId);
+
+fork
+  :Vérif. 1 — Écritures non validées\necriture.count({\n  exerciceComptable_id,\n  estValidee: false\n});
+  if ([garde] count > 0 ?) then (oui)
+    :return Warning {\n  blocage: false,\n  message: "N écritures non validées",\n  ids: [...]\n};
+    note right #1A3A1A
+      Avertissement non bloquant.
+      Le comptable doit les traiter
+      avant de valider la clôture.
+    end note
+  end if
+
+fork again
+  :Vérif. 2 — Balance équilibrée\nligneEcriture.aggregate({\n  _sum: { montant },\n  groupBy: [sens]\n});
+  if ([garde] ΣDÉBIT ≠ ΣCRÉDIT ?) then (oui)
+    :return Error {\n  blocage: true,\n  ecartDebit: x,\n  ecartCredit: y\n};
+    stop
+  end if
+
+fork again
+  :Vérif. 3 — TVA déclarée\ndeclarationTVA.count({\n  exerciceComptable_id,\n  estDeposee: false\n});
+  if ([garde] Déclarations TVA\n  non déposées ?) then (oui)
+    :return Warning {\n  blocage: false,\n  message: "N déclarations TVA en attente"\n};
+  end if
+
+fork again
+  :Vérif. 4 — Amortissements calculés\nimmobilisation.count({\n  estEntierementAmortie: false\n}) avec dernier exercice\nligneAmortissement manquant;
+  if ([garde] Dotations manquantes ?) then (oui)
+    :Auto-calcul des dotations\nmanquantes si autorisé\npar config;
+  end if
+
+fork again
+  :Vérif. 5 — Emprunts échéances\nligneRemboursementEmprunt.findMany({\n  dateEcheance <= fin_exercice,\n  estPayee: false\n});
+  if ([garde] Échéances impayées ?) then (oui)
+    :return Warning {\n  message: "N échéances emprunt impayées"\n};
+  end if
+
+end fork
+
+|#2D1B69|Dirigeant (validation requise)|
+:Reçoit le récapitulatif\ndes vérifications;
+
+if ([garde] Blocage critique\nprésent ?) then (oui)
+  :Refuse la validation\njusqu'à correction;
+  stop
+end if
+
+:Confirme la clôture\n(mutation validerCloture);
+
+|#12123A|ComptaService|
+note right #1A3A1A
+  À partir de ce point,
+  les actions sont irréversibles.
+  Transaction PostgreSQL atomique.
+end note
+
+:BEGIN TRANSACTION;
+
+fork
+  :exerciceComptable.update({\n    estClos: true,\n    dateCloture: today\n  });
+
+fork again
+  :Générer les écritures\nde clôture (OD) :\n  - Compte de résultat\n  - Report à nouveau\n  - Affectation résultat;
+  note right #1A3A1A
+    Écritures automatiques de clôture
+    calculées depuis le compte
+    de résultat de l'exercice.
+  end note
+
+fork again
+  :exerciceComptable.create({\n    annee: exercice.annee + 1,\n    dateOuverture: today,\n    estClos: false\n  });
+  note right #1A3A1A
+    Le nouvel exercice est ouvert
+    immédiatement pour permettre
+    la saisie des OD d'à-nouveau.
+  end note
+
+fork again
+  :Générer le FEC complet\n(18 colonnes, UTF-8 BOM)\net stocker en MinIO\navec policy WORM 10 ans;
+
+fork again
+  :Générer les états de synthèse\n(bilan + CR) en PDF\net stocker en MinIO;
+
+end fork
+
+:COMMIT TRANSACTION;
+
+|#12123A|Système|
+if ([garde] Transaction\nCOMMIT réussie ?) then (non)
+  :ROLLBACK automatique;
+  :return Error\n"Clôture annulée — état BDD intact";
+  stop
+else (oui)
+  :Invalider le cache Redis\n(balance, journaux, bilan\npour cet exercice);
+  note right #1A3A1A
+    Le cache doit être invalidé
+    pour forcer le recalcul
+    avec les données finales.
+  end note
+
+  :notification.createMany([\n    { destinataire: comptable, msg: "✅ Clôture 2025 validée" },\n    { destinataire: dirigeant, msg: "Exercice 2025 clôturé" },\n    { destinataire: controleur, msg: "FEC disponible" }\n  ]);
+
+  :return {\n    success: true,\n    exerciceClos: 2025,\n    exerciceOuvert: 2026,\n    fecUrl: presignedUrl(15min),\n    nbEcritures: n\n  };
+
+  stop
+end if
+
+@enduml
+
+
+@startuml ADT_05_Securite_Audit_Incident
+title AgriAxis — ADT05 : Sécurité — audit trail, incident de sécurité, révocation d'accès
+
+skinparam backgroundColor #1E1E1E
+skinparam ActivityBackgroundColor #1A1A1A
+skinparam ActivityBorderColor #FC8181
+skinparam ActivityFontColor #E2E8F0
+skinparam ActivityFontSize 11
+skinparam ArrowColor #FC8181
+skinparam PartitionBackgroundColor #1A0000
+skinparam PartitionBorderColor #7B1515
+skinparam PartitionFontColor #CBD5E0
+skinparam DiamondBackgroundColor #2A0000
+skinparam DiamondBorderColor #FC8181
+skinparam DiamondFontColor #FED7D7
+skinparam NoteBackgroundColor #1A3A1A
+skinparam NoteBorderColor #68D391
+skinparam NoteFontColor #C6F6D5
+
+|#1A0000|Système (détection automatique)|
+start
+
+fork
+  ' ── AUDIT TRAIL ──────────────────────────────
+  :Toute mutation GraphQL réussie\ndéclenche AuditService.log();
+
+  |#2A0000|AuditService|
+  :Enregistre dans journalAccesControleur\nsi type == CONTROLEUR_EXTERNE\n{ typeAction, cibleType, cibleId,\n  dateHeure, espaceControleur_id };
+  note right #1A3A1A
+    Journal immuable.
+    Ni l'admin ni le contrôleur
+    ne peut le modifier.
+    Rétention 10 ans (WORM).
+  end note
+
+  :Pour toute action sensible\n(suppression compte, validation clôture,\n modification RBAC) :\ncreateAuditLog({\n  userId, action, cible,\n  ip: request.ip,\n  timestamp: now()\n});
+
+fork again
+  ' ── DÉTECTION D'INCIDENT ─────────────────────
+  :Détecte anomalie :\n• N échecs de connexion consécutifs\n• Token utilisé depuis IP inconnue\n• Accès massif à des données sensibles\n• Modification RBAC hors plage horaire;
+
+  |#1A0000|SecurityService|
+  :Crée l'incident\n{ type, niveau: FAIBLE|MOYEN|CRITIQUE,\n  description, userId?,\n  dateDetection: now() };
+
+  if ([garde] Niveau CRITIQUE ?) then (oui)
+    fork
+      :Suspend immédiatement\nle compte suspecté\nclientsEtFournisseurs|employes\n.update({ estActif: false });
+
+      :Invalide tous les tokens actifs\nREDIS DEL refresh:{userId}*;
+      note right #1A3A1A
+        Tous les refresh tokens
+        du compte sont révoqués.
+        L'utilisateur ne peut plus
+        se reconnecter.
+      end note
+
+    fork again
+      :Notification URGENTE\nEmployé Informatique\n+ Dirigeant;
+      note right #1A3A1A : Canal prioritaire — WebSocket + email
+    end fork
+
+  else if (niveau MOYEN) then
+    :Notification normale\nEmployé Informatique;
+
+  else (FAIBLE)
+    :Log uniquement\n(pas de notification active);
+  end if
+
+end fork
+
+|#2A1A00|Employé Informatique (traitement incident)|
+:Reçoit la notification;
+:Consulte les logs système\n(EI_24) + logs audit (EI_25);
+:Analyse les actions suspectes;
+
+if ([garde] Incident confirmé ?) then (non)
+  :Marque comme faux positif;
+  if (Compte suspendu par\nauto-détection ?) then (oui)
+    :Réactive le compte (EI_13);
+  end if
+  stop
+else (oui)
+  :Prend en charge l'incident (EI_28);
+  :Documente les actions correctives;
+
+  fork
+    if (Compte compromis ?) then (oui)
+      :Force la réinitialisation\ndu mot de passe (EI_12);
+      :Génère un nouveau token\nde réinitialisation\n(64 chars, TTL 48h);
+      :Envoie par email\nà l'adresse de secours\nvérifiée (Resend);
+    end if
+
+  fork again
+    if (Rôles RBAC modifiés\nde façon suspecte ?) then (oui)
+      :Restaure les permissions\nprécédentes depuis\nl'historique (EI_22);
+      note right #1A3A1A
+        L'historique des modifications
+        de rôles est immuable.
+        Toute modification est tracée.
+      end note
+    end if
+
+  fork again
+    if (Données exfiltrées ?) then (oui)
+      :Déclenche la procédure RGPD\n(notification CNIL si >72h\ndépuis détection);
+      note right #1A3A1A
+        Obligation légale RGPD art. 33 :
+        Notification autorité compétente
+        dans les 72h si violation
+        de données personnelles.
+      end note
+    end if
+
+  end fork
+
+  |#1A0000|SecurityService|
+  :Clôture l'incident (EI_29)\n{ resolution, actionsRealisees,\n  dateResolution: now() };
+
+  :Met à jour le tableau\nde bord sécurité (EI_32)\n{ incidents, taux_résolution,\n  MTTD, MTTR };
+
+  stop
+end if
+
+' ── RÉVOCATION D'ACCÈS PLANIFIÉE ────────────────────────────
+
+|#1A0000|Système (cron quotidien — 00:00)|
+:Vérifie tous les accès\nà durée limitée :;
+
+fork
+  :espaceControleur.findMany({\n  dateExpirationAcces <= today,\n  estActif: true\n});
+
+  if (Accès contrôleur expiré ?) then (oui)
+    :espaceControleur.update(\n  estActif: false\n);
+    :REDIS DEL refresh:{userId}_controleur;
+    :notification.create(\n  controleur,\n  "Votre accès a expiré"\n);
+  end if
+
+fork again
+  :permissionsExeptionelles.findMany({\n  dateFinPermission <= today\n});
+
+  if (Permissions temporaires\nexpirées ?) then (oui)
+    :Log expiration;
+    note right #1A3A1A
+      Les permissions exceptionnelles
+      expirées ne sont pas supprimées,
+      elles sont simplement hors plage
+      de date (immuabilité).
+    end note
+  end if
+
+fork again
+  :certiphyto.findMany({\n  dateExpiration <= today + 30\n});
+
+  if (Certiphyto expire\ndans 30 jours ?) then (oui)
+    :notification.create(\n  employe + RH,\n  "⚠️ Certiphyto expire le [date]"\n);
+    note right #1A3A1A
+      Alerte préventive J-30, J-14, J-7.
+      Si expiré : la prescription
+      est refusée par le service phyto.
+    end note
+  end if
+
+end fork
+
+stop
+
+@enduml

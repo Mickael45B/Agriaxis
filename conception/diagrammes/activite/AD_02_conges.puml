@@ -1,0 +1,76 @@
+@startuml AD_02_Conges
+title AgriAxis — AD02 : Processus de demande de congés (3 niveaux de validation)
+
+skinparam backgroundColor #FAFAFA
+skinparam ActivityBackgroundColor #E9F7EF
+skinparam ActivityBorderColor #27AE60
+skinparam ActivityFontColor #1A4731
+skinparam ActivityFontSize 12
+skinparam ArrowColor #27AE60
+skinparam PartitionBackgroundColor #F4FBF6
+skinparam PartitionBorderColor #27AE60
+skinparam DiamondBackgroundColor #D5F0E0
+skinparam DiamondBorderColor #1A4731
+skinparam NoteBackgroundColor #FFFCE0
+skinparam NoteBorderColor #CCCCAA
+
+|#D5F0E0|Employé|
+start
+:Consulte son solde de congés;
+:Soumet une demande de congés\n(type, dates début/fin, motif);
+note right: EP_05
+
+if (Demande modifiable ?) then (annuler/modifier)
+  :Modifie ou annule\nla demande;
+  note right: EP_06 / EP_07
+  stop
+end if
+
+|#B8E6C8|Chef de Groupe|
+:Reçoit la notification;
+:Consulte les présences\net planning du groupe;
+
+if (Impact planning acceptable ?) then (oui)
+  :Remonte la demande\n(avis favorable);
+  note right: CG_10
+else (non)
+  :Remonte la demande\n(avis défavorable + motif);
+  note right: CG_10
+end if
+
+|#8ED4A8|RH|
+:Reçoit la demande remontée;
+:Vérifie le solde de congés\nde l'employé;
+
+if (Solde suffisant ?) then (non)
+  :Refuse la demande\n(motif : solde insuffisant);
+  |#D5F0E0|Employé|
+  :Reçoit la notification\nde refus;
+  stop
+else (oui)
+  if (Période critique (forte activité) ?) then (oui)
+    if (Avis chef de groupe défavorable ?) then (oui)
+      :Refuse la demande\n(motif : période critique);
+      |#D5F0E0|Employé|
+      :Reçoit la notification\nde refus;
+      stop
+    else (non)
+      :Valide la demande;
+    end if
+  else (non)
+    :Valide la demande;
+  end if
+
+  note right: RH_23
+
+  :Met à jour le solde\nde congés de l'employé;
+  note right: RH_26
+
+  |#D5F0E0|Employé|
+  :Reçoit la notification\nde validation;
+  :Congés apparaissent\ndans son planning;
+  note right: EP_01
+  stop
+end if
+
+@enduml

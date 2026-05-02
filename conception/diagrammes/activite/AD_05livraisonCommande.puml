@@ -1,0 +1,144 @@
+@startuml AD_0_Commande_B2B_Livraison
+title AgriAxis — AD05 : Processus commande B2B (devis → commande → livraison → facturation)
+
+skinparam backgroundColor #FAFAFA
+skinparam ActivityBackgroundColor #F4ECF7
+skinparam ActivityBorderColor #8E44AD
+skinparam ActivityFontColor #4A235A
+skinparam ActivityFontSize 12
+skinparam ArrowColor #8E44AD
+skinparam PartitionBackgroundColor #FAF5FF
+skinparam PartitionBorderColor #8E44AD
+skinparam DiamondBackgroundColor #E8D5F5
+skinparam DiamondBorderColor #4A235A
+skinparam NoteBackgroundColor #FFFCE0
+skinparam NoteBorderColor #CCCCAA
+
+|#E8D5F5|Client Pro (Détaillant / SG)|
+start
+:Parcourt le catalogue B2B\n(tarifs contractuels);
+note right: CD_08 / SG_01
+
+if (Produit disponible en stock\nimmédiat ?) then (non — production future)
+  :Réserve une production\nà l'avance (SG seulement);
+  note right: SG_05
+  :Attend la confirmation\ndu commercial;
+else (oui)
+  :Compose sa commande\n(articles, quantités, adresse);
+  note right: CD_14
+end if
+
+|#D5B8E8|Commercial|
+:Reçoit la notification\nde commande / réservation;
+
+if (Devis requis ?) then (oui)
+  :Crée le devis\n(prix, remises, conditions);
+  note right: CO_09
+  :Envoie le devis au client;
+  note right: CO_12
+
+  |#E8D5F5|Client Pro|
+  if (Devis accepté ?) then (non)
+    :Refuse le devis\n(ou contre-propose);
+
+    |#D5B8E8|Commercial|
+    if (Négociation possible ?) then (oui)
+      :Soumet une remise\nexceptionnelle;
+      note right: CO_32
+
+      |#FEF9E7|Dirigeant|
+      if (Remise validée ?) then (oui)
+        :Valide la remise;
+        note right: DI_18
+      else (non)
+        stop
+      end if
+    else (non)
+      stop
+    end if
+  end if
+end if
+
+|#D5B8E8|Commercial|
+:Confirme la commande\n(statut → CONFIRMÉE);
+note right: CO_23
+
+|#E8D5F5|Client Pro|
+:Paye la commande\n(CB / virement / 30j selon profil);
+note right: CD_19
+
+|#C29BD5|Gestionnaire de Stock|
+:Prépare la commande\n(prélève les articles du stock);
+:Valide le bon de préparation;
+
+|#AF7EC2|Contrôleur Qualité|
+:Effectue le contrôle\nd'expédition;
+note right: CQ_16
+
+if (Contrôle expédition\nconforme ?) then (non)
+  :Déclare NC expédition\n(DAR, lot bloqué, quantité...);
+  note right: CQ_19
+
+  |#C29BD5|Gestionnaire de Stock|
+  :Remplace le lot non conforme\n(si stock disponible);
+
+  if (Remplacement possible ?) then (non)
+    |#D5B8E8|Commercial|
+    :Informe le client\ndu retard / rupture;
+    stop
+  end if
+else (oui)
+  |#AF7EC2|Contrôleur Qualité|
+  :Valide l'expédition\n(statut → CONFORME);
+  note right: CQ_18
+end if
+
+|#9C61AF|Transporteur|
+:Reçoit la mission\nde livraison;
+note right: TR_01
+:Effectue le contrôle\npré-départ véhicule;
+note right: TR_20
+:Démarre la mission;
+note right: TR_04
+
+fork
+  :Livre la commande\nau client;
+  note right: TR_10
+
+  if (Livraison réussie ?) then (partielle)
+    :Déclare livraison\npartielle (motif + articles);
+    note right: TR_11
+  else if (échouée) then
+    :Déclare livraison\néchouée (client absent...);
+    note right: TR_12
+  end if
+
+fork again
+  :Rédige le compte-rendu\nde tournée;
+  note right: TR_24
+end fork
+
+|#E8D5F5|Client Pro|
+:Confirme la réception;
+note right: CD_25
+
+|#8989CF|Comptable (Système automatique)|
+:Génère l'écriture comptable\n(411 / 701 / 44571 TVA)\nen partie double;
+note right: AUTOMATISME
+
+:Génère la facture PDF\n(stockée MinIO);
+
+:Envoie la facture\npar email (Resend);
+
+if (Paiement 30j ?) then (oui)
+  :Attend l'échéance;
+  :Enregistre l'encaissement;
+  :Lettre les lignes 411;
+  note right: COM_13
+else (paiement immédiat)
+  :Enregistre l'encaissement\nimmédiat;
+end if
+
+stop
+
+@enduml

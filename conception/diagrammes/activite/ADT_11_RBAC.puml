@@ -1,0 +1,382 @@
+@startuml ADT_01_RBAC_ABAC_Resolution
+title AgriAxis — ADT01 : Résolution des permissions RBAC/ABAC (niveau technique)
+
+skinparam backgroundColor #1E1E1E
+skinparam ActivityBackgroundColor #2D3748
+skinparam ActivityBorderColor #4A90D9
+skinparam ActivityFontColor #E2E8F0
+skinparam ActivityFontSize 11
+skinparam ArrowColor #68D391
+skinparam PartitionBackgroundColor #1A202C
+skinparam PartitionBorderColor #4A5568
+skinparam PartitionFontColor #CBD5E0
+skinparam DiamondBackgroundColor #2A4365
+skinparam DiamondBorderColor #63B3ED
+skinparam DiamondFontColor #BEE3F8
+skinparam NoteBackgroundColor #744210
+skinparam NoteBorderColor #F6AD55
+skinparam NoteFontColor #FFFBF0
+
+|#1A202C|Client (Frontend / Mobile)|
+start
+:Envoie une requête GraphQL\nAuthorization: Bearer <accessToken>;
+note right #744210
+  Le token est transmis
+  dans l'en-tête HTTP.
+  Absent → rejet immédiat.
+end note
+
+|#1E3A5F|JwtAuthGuard|
+if ([guard] Token présent ?) then (non)
+  :throw UnauthorizedException\n"Token manquant";
+  stop
+end if
+
+:JWT.verify(token, RS256_PUBLIC_KEY);
+
+if ([guard] Signature valide ?) then (non)
+  :throw UnauthorizedException\n"Token invalide";
+  stop
+end if
+
+if ([guard] Token expiré ?) then (oui)
+  :throw UnauthorizedException\n"Token expiré — refreshToken requis";
+  stop
+end if
+
+:Décode le payload :\n{ userId, roles[], siteIds[],\n  type: EMPLOYE|CLIENT, iat, exp };
+
+|#1A3A2A|RolesGuard|
+:Récupère les rôles requis\ndepuis @Roles() du resolver;
+
+if ([guard] roles[] requis\ndéfinis sur le resolver ?) then (non)
+  note right #744210 : Route publique — passer
+else (oui)
+  :intersection = roles_token ∩ roles_requis;
+
+  if ([guard] intersection vide ?) then (oui)
+    :Récupère permissions_role\ndepuis Redis (cache 5 min)\nou PostgreSQL si cache manqué;
+
+    if ([guard] Permission\npour cette action ?) then (non)
+      :throw ForbiddenException\n"Rôle insuffisant";
+      stop
+    end if
+  end if
+end if
+
+|#2D1A5F|PermissionsExceptionnellesGuard|
+:Cherche permissionsExceptionnelles\n{ employes_id: userId,\n  listePermission_id: action,\n  dateDebutPermission <= now(),\n  dateFinPermission >= now() };
+
+note right #744210
+  Les permissions exceptionnelles
+  SURCHARGENT les règles RBAC.
+  Elles peuvent ACCORDER ou REFUSER
+  une action indépendamment du rôle.
+end note
+
+if (Exception trouvée ?) then (oui)
+  if (exception.autoriser == false ?) then (oui)
+    :throw ForbiddenException\n"Permission révoquée\n(exception individuelle)";
+    stop
+  else
+    :Accès accordé par exception\n(log dans journalAccesControleur\nsi contrôleur externe);
+  end if
+end if
+
+|#1A3A4F|AbacGuard (résolution contextuelle)|
+
+fork
+  :Résolution périmètre SITE\n[garde : user.siteIds\n  contient ressource.listeSite_id ?];
+  if (Ressource liée à un site\nnon autorisé ?) then (oui)
+    :throw ForbiddenException\n"Hors périmètre site";
+    stop
+  end if
+
+fork again
+  :Résolution PROPRIÉTÉ\n[garde : ressource.employes_id\n  == userId OU rôle supérieur ?];
+  if (Ressource d'un autre\nemployé sans droit supérieur ?) then (oui)
+    :throw ForbiddenException\n"Non propriétaire";
+    stop
+  end if
+
+fork again
+  :Résolution EXPIRATION ACCÈS\n[garde : espaceControleur\n  .dateExpirationAcces > now()\n  si type == CONTROLEUR_EXTERNE];
+  if (Accès expiré ?) then (oui)
+    :throw ForbiddenException\n"Accès contrôleur expiré";
+    stop
+  end if
+
+end fork
+
+|#1A202C|Resolver GraphQL|
+:Toutes les vérifications\npassées — exécute le resolver;
+
+if (Données personnelles\ndans la réponse ?) then (oui)
+  |#1E3A2A|CryptoService|
+  :decrypt(champs personnels)\n[AES-256-GCM double couche\nclé A puis clé B depuis pool .env];
+end if
+
+|#1A202C|Client (Frontend / Mobile)|
+:Reçoit la réponse GraphQL;
+
+|#2A2A1A|AuditService (si type == CONTROLEUR_EXTERNE)|
+:journalAccesControleur.create({\n  typeAction: "CONSULTATION",\n  cibleType: typeDeLaRessource,\n  cibleId: id,\n  dateHeure: now()\n});
+
+stop
+
+@enduml
+
+
+@startuml ADT_02_Stock_MultiSites
+title AgriAxis — ADT02 : Gestion du stock multi-sites (mouvements, PAMP, alertes, transferts)
+
+skinparam backgroundColor #1E1E1E
+skinparam ActivityBackgroundColor #2D3748
+skinparam ActivityBorderColor #E67E22
+skinparam ActivityFontColor #E2E8F0
+skinparam ActivityFontSize 11
+skinparam ArrowColor #F6AD55
+skinparam PartitionBackgroundColor #1A202C
+skinparam PartitionBorderColor #744210
+skinparam PartitionFontColor #CBD5E0
+skinparam DiamondBackgroundColor #4A2C00
+skinparam DiamondBorderColor #F6AD55
+skinparam DiamondFontColor #FEEBC8
+skinparam NoteBackgroundColor #1A3A1A
+skinparam NoteBorderColor #68D391
+skinparam NoteFontColor #C6F6D5
+
+|#1A202C|Service déclencheur (Commande / Phyto / Production)|
+start
+:Demande un mouvement de stock\n{ article_id, listeSite_id,\n  type: ENTREE|SORTIE|TRANSFERT|AJUSTEMENT,\n  quantite, prixUnitaire? };
+
+|#2D1A00|StockService|
+:Récupère stockSite\n{ quantiteDisponible,\n  quantiteReservee,\n  prixMoyenPondere,\n  listeMethodeValorisation };
+
+if ([garde] type == SORTIE\nou TRANSFERT ?) then (oui)
+  :quantiteReelle =\n  quantiteDisponible - quantiteReservee;
+
+  if ([garde] quantiteReelle\n  >= quantite demandée ?) then (non)
+    :throw InsufficientStockException\n{ disponible: quantiteReelle,\n  demande: quantite };
+    stop
+  end if
+end if
+
+:mouvementStock.create({\n  article_id, listeSite_id,\n  listeTypesMouvementStock_id,\n  employes_id: userId,\n  quantite, prixUnitaire,\n  dateHeureMouvement: now()\n});
+note right #1A3A1A
+  Trace immuable.
+  Jamais modifiée ni supprimée.
+  Toute correction → nouveau mouvement
+  de type AJUSTEMENT.
+end note
+
+if (type == ENTREE ?) then (oui)
+  |#1A2A00|PrixService (calcul PAMP)|
+  :nouvQuantite = quantiteDisponible + quantite;
+  :nouvPAMP = \n  (quantiteDisponible × PAMP_actuel\n   + quantite × prixUnitaire)\n  / nouvQuantite;
+  note right #1A3A1A
+    Calcul PAMP (Prix d'Achat
+    Moyen Pondéré) recalculé
+    à chaque entrée en stock.
+  end note
+  :stockSite.update({\n    quantiteDisponible: nouvQuantite,\n    prixMoyenPondere: nouvPAMP\n  });
+end if
+
+if (type == SORTIE ?) then (oui)
+  :stockSite.update({\n    quantiteDisponible -= quantite\n  });
+  :ligneCoutCulture.create({\n    planteEnCulture_id,\n    montantHT: quantite × PAMP\n  });
+  note right #1A3A1A
+    Chaque sortie alimente
+    le coût de revient du lot
+    de culture concerné.
+  end note
+end if
+
+if (type == TRANSFERT ?) then (oui)
+  fork
+    :stockSite.update(site_origine,\n  quantiteDisponible -= quantite);
+  fork again
+    :stockSite.upsert(site_destination,\n  quantiteDisponible += quantite,\n  PAMP recalculé);
+  end fork
+end if
+
+|#2D2D00|AlerteService (déclenché automatiquement)|
+:Récupère article.stockMinimum\net article.stockSecurite\net article.pointCommande;
+
+:quantiteNette =\n  quantiteDisponible - quantiteReservee;
+
+if (quantiteNette\n  <= pointCommande ?) then (oui)
+  fork
+    if (alerteStock active\n    pour cet article ?) then (non)
+      :alerteStock.create({\n        article_id,\n        employes_id: gestionnaire,\n        listeTypeAlertCommande: POINT_COMMANDE,\n        estActive: true\n      });
+    end if
+  fork again
+    :propositionCommande.create({\n      article_id, stockSite_id,\n      quantiteACommander: calculerQteOptimale(),\n      listeFournisseur_id: preferred,\n      statut: EN_ATTENTE\n    });
+    note right #1A3A1A
+      Proposition automatique
+      basée sur la consommation
+      moyenne des 3 derniers mois.
+    end note
+  end fork
+
+  :notification.create({\n    destinataire_id: gestionnaire,\n    titre: "⚠️ Alerte stock : " + article.nom,\n    typeCible: "ALERTE_STOCK"\n  });
+
+  :WebSocket PUBLISH\nchannel:stock:{siteId};
+end if
+
+if (quantiteNette\n  <= stockMinimum ?) then (oui)
+  :notification.create({\n    niveau: CRITIQUE,\n    titre: "🔴 Stock critique : " + article.nom\n  });
+end if
+
+|#1A202C|Service appelant|
+:Reçoit { success: true,\n  nouveauStock: quantiteDisponible,\n  alertesDeclenchees: n };
+
+stop
+
+@enduml
+
+
+@startuml ADT_03_Cycle_Culture_Complet
+title AgriAxis — ADT03 : Cycle de vie complet d'une culture (semis → contrôle → vente)
+
+skinparam backgroundColor #1E1E1E
+skinparam ActivityBackgroundColor #1A2F1A
+skinparam ActivityBorderColor #68D391
+skinparam ActivityFontColor #E2E8F0
+skinparam ActivityFontSize 11
+skinparam ArrowColor #68D391
+skinparam PartitionBackgroundColor #101A10
+skinparam PartitionBorderColor #2D6A2D
+skinparam PartitionFontColor #CBD5E0
+skinparam DiamondBackgroundColor #1A3A1A
+skinparam DiamondBorderColor #68D391
+skinparam DiamondFontColor #C6F6D5
+skinparam NoteBackgroundColor #1A1A3A
+skinparam NoteBorderColor #9F7AEA
+skinparam NoteFontColor #E9D8FD
+
+|#101A10|Chef de Culture|
+start
+:Crée un lot en culture\nplanteEnCulture.create({\n  listeNomenclaturePlante_id,\n  surfacesDeCultures_id,\n  lotPlante: "LOT-2026-042",\n  dateDebutCulture: today\n});
+note right #1A1A3A
+  Chaque lot a un UUID unique.
+  La traçabilité démarre ici.
+  Toutes les actions ultérieures
+  référencent ce planteEnCulture_id.
+end note
+
+:Associe la fiche de culture\n(itinéraire cultural);
+:Publie le planning de production\n(visible portail semi-grossiste);
+
+|#1A2A10|Système (automatique — cron quotidien)|
+:Calcule coutJournalierSurface\npour ce lot :\n  surface × coutParM2ParJour\n  (énergie, amortissement serre);
+note right #1A1A3A
+  Coûts indirects imputés
+  chaque jour automatiquement
+  dans ligneCoutCulture.
+end note
+
+|#102010|Employés terrain (itinéraire cultural)|
+
+fork
+  :Exécution des tâches culturales\n(semis, rempotage, taille...)\n→ ficheTache.create() par tâche;
+  :productionEmploye.create()\n→ suivi productivité individuelle;
+  :Sortie stock intrants\n(substrat, engrais...)\n→ mouvementStock (SORTIE)\n→ ligneCoutCulture (matières);
+
+fork again
+  :Signalements terrain\n(maladies, ravageurs)\n→ signalementPhyto.create();
+end fork
+
+|#101A10|Chef de Culture|
+if (Signalement phyto\ndétecté ?) then (oui)
+  :Diagnostic + prescription\nou protocole préventif\n→ prescriptionTraitement.create();
+
+  |#1A2A10|Système|
+  :registrePhytosanitaire.create()\nà la clôture du traitement\n[AUTOMATISME RÉGLEMENTAIRE];
+  :dateFinDAR calculée\nautomatiquement;
+
+  if ([garde] DAR actif\n  sur le lot ?) then (oui)
+    :Lot marqué SOUS_DAR;\n
+    note right #1A1A3A
+      Le lot ne peut pas
+      être expédié tant que
+      dateFinDAR > today.
+    end note
+  end if
+end if
+
+|#101A10|Chef de Culture|
+:Évalue la maturité du lot\n(stade cultural atteint ?);
+
+if ([garde] Lot prêt\npour contrôle ?) then (non)
+  :Continue l'itinéraire cultural;
+  note right #1A1A3A : Retour tâches terrain
+else (oui)
+  |#2A1A00|Contrôleur Qualité|
+  :Contrôle de production\ncontroleQualite.create({\n  etape: PRODUCTION,\n  lot_id\n});
+  :Évalue chaque critère\n(aspect, taille, santé, DAR...)\n→ ligneControleQualite;
+  :Calcule taux de conformité;
+
+  if ([garde] Taux < seuil ?) then (oui)
+    :nonConformite.create()\nLot bloqué;
+
+    |#101A10|Chef de Culture|
+    if (Retraitement possible ?) then (oui)
+      :Planifie actions correctives;
+      note right #1A1A3A : Retour tâches terrain
+    else (non)
+      :Lot détruit → mouvement PERTE;
+      :Écriture comptable perte;
+      stop
+    end if
+
+  else (oui — lot conforme)
+
+    |#1A2A00|Système|
+    :Calcule coutDeCulture\ntotal du lot :\n  coutMainOeuvre\n  + coutMatierePremiere\n  + coutMachine\n  + coutEnergie\n  + coutEntretien;
+    note right #1A1A3A
+      Agrégation de toutes les
+      ligneCoutCulture créées
+      depuis le début du lot.
+    end note
+
+    :Calcule le coût de revient\nunitaire = coutTotal / quantite;
+
+    |#101A10|Chef de Culture|
+    :Associe le lot à l'article\ndu catalogue\n→ articlesHasPlantesEnCulture;
+    :Met à jour stockSite\n(quantiteDisponible += quantite);
+
+    fork
+      :Contrôle d'expédition\n(si commande liée);
+    fork again
+      :Mise en rayon magasin\n→ miseEnRayon.create();
+    fork again
+      :Disponible portail e-commerce\net B2B;
+    end fork
+
+    :Expédition → controleQualite\n(etape: EXPEDITION)\n[garde: DAR écoulé ?];
+
+    if ([garde] DAR encore actif ?) then (oui)
+      :Bloquer l'expédition;
+      :Notifier CQ + Commercial;
+    else (non)
+      :Valide l'expédition\n→ bonConformite.create();
+
+      |#1A2A10|Système|
+      :mouvementStock (SORTIE)\n→ mise à jour stockSite;
+      :Génère écriture comptable\nvente (AUTOMATISME);
+
+      :planteEnCulture.update({\n  dateFinCulture: today\n});
+      note right #1A1A3A
+        La culture est terminée.
+        Le lot reste traçable
+        indéfiniment via
+        mouvementStock + registre.
+      end note
+    end if
+
+    stop
+  end if
+end if
+
+@enduml

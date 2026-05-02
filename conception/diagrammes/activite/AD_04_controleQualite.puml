@@ -1,0 +1,119 @@
+@startuml AD_04_ControleQualite_Reception
+title AgriAxis — AD04 : Contrôle qualité réception (intrants ou plants achetés)
+
+skinparam backgroundColor #FAFAFA
+skinparam ActivityBackgroundColor #FDEBD0
+skinparam ActivityBorderColor #D35400
+skinparam ActivityFontColor #784212
+skinparam ActivityFontSize 12
+skinparam ArrowColor #D35400
+skinparam PartitionBackgroundColor #FEF5EB
+skinparam PartitionBorderColor #D35400
+skinparam DiamondBackgroundColor #FDEBD0
+skinparam DiamondBorderColor #784212
+skinparam NoteBackgroundColor #FFFCE0
+skinparam NoteBorderColor #CCCCAA
+
+|#FCDDB6|Contrôleur Qualité|
+start
+:Reçoit la livraison\nfournisseur;
+:Scanne le lot / colis\n(QR code ou référence commande);
+note right: CQ_10
+:Vérifie la conformité\ndu bon de livraison\n(article, quantité attendue);
+
+fork
+  :Évalue l'aspect visuel\n(état sanitaire, intégrité);
+fork again
+  :Vérifie la quantité\nreçue vs commandée;
+fork again
+  :Vérifie l'espèce / variété\n(conforme commande ?);
+fork again
+  :Vérifie le DAR\n(délai avant récolte respecté ?);
+end fork
+
+:Saisit le résultat\npour chaque critère\nde la grille;
+note right: CQ_06 / CQ_07
+
+:Calcule le taux\nde conformité global;
+
+if (Taux ≥ seuil\n(ex : 80%) ?) then (oui)
+
+  :Valide la réception\n(statut : CONFORME);
+  note right: CQ_08
+
+  |#FAC082|Système|
+  :Libère le lot\npour utilisation en production;
+  :Crée le mouvement\nde stock (ENTRÉE);
+
+  |#FCDDB6|Contrôleur Qualité|
+  :Émet le bon\nde conformité;
+  note right: CQ_25
+
+  stop
+
+else (non)
+
+  :Déclare une\nnon-conformité;
+  note right: CQ_09
+
+  if (Anomalie\npartielle ?) then (oui — une partie est conforme)
+
+    :Sépare le lot\n(partie conforme / non conforme);
+
+    fork
+      :Libère la partie\nconforme en stock;
+    fork again
+      :Bloque la partie\nnon conforme;
+    end fork
+
+    :Émet le bon de\nconformité partiel;
+    note right: CQ_25
+
+  else (non — lot entièrement non conforme)
+    |#FAC082|Système|
+    :Bloque tout le lot\nen stock (quantiteBloquee);
+  end if
+
+  |#F8A458|Chef de Site|
+  :Reçoit la notification\nde non-conformité;
+  :Examine la NC\n(photos, critères, taux);
+
+  if (Décision ?) then (retour fournisseur)
+    :Décide le retour\nau fournisseur;
+    note right: motif + commentaire
+
+    |#FAC082|Système|
+    :Crée le mouvement\nde stock (SORTIE_RETOUR);
+    :Déclenche la notification\nau gestionnaire de stock;
+
+  else if (retraitement) then
+    :Décide le retraitement\n(retravailler en interne);
+    note right: ex : nettoyage, triage
+
+    |#FAC082|Système|
+    :Marque le lot\n"EN_RETRAITEMENT";
+
+    |#FCDDB6|Contrôleur Qualité|
+    :Réalise un nouveau\ncontrôle après retraitement;
+    note right: retour au début du flux
+
+  else (destruction)
+    :Décide la destruction;
+
+    |#FAC082|Système|
+    :Crée le mouvement\nde stock (PERTE/CASSE);
+    :Génère l'écriture\ncomptable de perte;
+
+  end if
+
+  :Notifie le fournisseur\n(via email commercial);
+
+  |#FCDDB6|Contrôleur Qualité|
+  :Rédige le rapport\nqualité (si périodique);
+  note right: CQ_28
+
+  stop
+
+end if
+
+@enduml
